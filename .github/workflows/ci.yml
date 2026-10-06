@@ -1,0 +1,36 @@
+name: ci
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Pins must be committed (no trust-on-first-use)
+        run: test -s scripts/engine-pins.json || (echo "Missing scripts/engine-pins.json: run the 'pins' workflow, review its artifact, commit it" && exit 1)
+      - name: Download engine, verify pins and cdnjs SRI
+        run: node scripts/fetch-engine.mjs --cross-check
+      - name: sha256sum -c
+        run: node scripts/test-checksums.mjs
+      - name: Worker/client copies must not drift
+        run: |
+          cmp static/engine/stockfish-worker.js nextjs/public/engine/stockfish-worker.js
+          cmp static/src/lib/engine/StockfishClient.js nextjs/src/lib/engine/StockfishClient.js
+          cmp static/src/lib/engine/StockfishClient.js nextjs/public/chesslens/src/lib/engine/StockfishClient.js
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: "playwright-report\ntest-results" }
+  legal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node scripts/build-compliance.mjs
+      - uses: actions/upload-artifact@v4
+        with: { name: compliance-bundle, path: compliance }

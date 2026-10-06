@@ -1,0 +1,3 @@
+{ "name": "chesslens-deploy", "private": true, "type": "module",
+  "scripts": { "engine": "node scripts/fetch-engine.mjs --cross-check", "pins": "node scripts/pin-from-sri.mjs", "test:checksums": "node scripts/test-checksums.mjs", "legal": "node scripts/build-compliance.mjs", "test:e2e": "playwright test", "serve": "node scripts/serve.mjs static 8080" },
+  "devDependencies": { "@playwright/test": "^1.47.0" } }

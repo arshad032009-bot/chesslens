@@ -1,0 +1,103 @@
+name: verify-engine
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: http://localhost:8080
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Prepare artifact folder
+        run: mkdir -p ci-artifacts
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      # Fails if scripts/engine-pins.json is missing/incomplete, a download fails, a file is empty or wrong,
+      # a pin mismatches, or the cdnjs-published SRI disagrees. Drop --cross-check only if you accept pins alone.
+      - name: Fetch engine (pinned + SRI cross-check)
+        run: |
+          set -o pipefail
+          node scripts/fetch-engine.mjs --cross-check 2>&1 | tee ci-artifacts/fetch.log
+
+      - name: Test checksums (sha256sum -c)
+        run: |
+          set -o pipefail
+          node scripts/test-checksums.mjs 2>&1 | tee ci-artifacts/checksums.log
+
+      - name: Confirm engine files are non-empty
+        run: |
+          set -o pipefail
+          {
+            status=0
+            for f in \
+              static/engine/stockfish.js static/engine/stockfish.wasm.js static/engine/stockfish.wasm static/vendor/chess.min.js \
+              nextjs/public/engine/stockfish.js nextjs/public/engine/stockfish.wasm.js nextjs/public/engine/stockfish.wasm \
+              nextjs/public/chesslens/vendor/chess.min.js; do
+              if [ -s "$f" ]; then echo "OK   $(stat -c %s "$f") bytes  $f"; else echo "FAIL missing or empty: $f"; status=1; fi
+            done
+            exit $status
+          } 2>&1 | tee ci-artifacts/nonempty.log
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start static server on localhost:8080
+        run: |
+          nohup node scripts/serve.mjs static 8080 > ci-artifacts/server.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS "$BASE_URL/index.html" > /dev/null && break; sleep 1; done
+          curl -fsS "$BASE_URL/index.html" > /dev/null
+          curl -fsSI "$BASE_URL/engine/stockfish.wasm" | tee ci-artifacts/wasm-headers.txt | grep -i 'content-type: application/wasm'
+
+      - name: Run Playwright verification
+        run: npx playwright test -c playwright.verify.config.ts
+
+      - name: Summary (verified)
+        if: success()
+        run: |
+          echo "Engine VERIFIED - pins, SRI, checksums, browser UCI test and sample game all passed." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Summary (not verified)
+        if: failure()
+        run: |
+          echo "Engine NOT verified - a step failed. See the artifacts and the failing step." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Evidence is uploaded whether the run passed or failed.
+      - name: Upload logs, diagnostics, console output, screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-engine-logs
+          path: ci-artifacts/
+          if-no-files-found: warn
+
+      - name: Upload Playwright report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn

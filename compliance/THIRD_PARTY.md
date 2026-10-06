@@ -1,0 +1,1 @@
+chess.js is distributed under the BSD 2-Clause license. Redistributions must retain the copyright notice, list of conditions and disclaimer: they are in the header of `vendor/chess.min.js`, which this project does not modify. Do not minify it again in a way that drops the header.

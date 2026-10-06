@@ -1,0 +1,272 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>ChessLens</title>
+<script src="vendor/chess.min.js"></script>
+<script>window.Chess||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"><\/script>')</script>
+<script src="src/lib/engine/StockfishClient.js"></script>
+<style>
+:root{--bg:#f3f1ec;--card:#fff;--tx:#17201f;--mut:#5d6a68;--ac:#0f766e;--ln:#d8d4ca;--l:#ead9b7;--d:#a8855a;box-sizing:border-box;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1a1a;--card:#162524;--tx:#eef2f1;--mut:#9db0ad;--ac:#e9b44c;--ln:#27403e;--l:#c9b995;--d:#6f7f6a}}
+:root[data-theme=dark]{--bg:#0f1a1a;--card:#162524;--tx:#eef2f1;--mut:#9db0ad;--ac:#e9b44c;--ln:#27403e;--l:#c9b995;--d:#6f7f6a}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--tx);font:15px/1.5 Georgia,'Times New Roman',serif}
+button,select,textarea{font:inherit;color:inherit}button{background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:8px 12px;cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac);font-weight:700}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) button.p{color:#10201f}}
+button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+main{max-width:1180px;margin:auto;padding:16px}h1{font-size:clamp(34px,8vw,64px);line-height:1.05;margin:.4em 0 .2em;letter-spacing:-.02em}
+.mut{color:var(--mut);font-size:13px}.card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px}
+textarea{width:100%;height:150px;background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:10px;font-family:ui-monospace,monospace;font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:20px}
+.err{color:#c0392b;font-weight:700}.hide{display:none!important}
+#an .g{display:grid;gap:12px;grid-template-columns:minmax(300px,480px) 1fr 300px}@media(max-width:980px){#an .g{grid-template-columns:1fr}}
+#bd{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border-radius:8px;overflow:hidden;user-select:none}
+.sq{display:flex;align-items:center;justify-content:center;font-size:clamp(26px,8vw,48px);cursor:pointer;line-height:1}.sq.l{background:var(--l)}.sq.d{background:var(--d)}
+.sq.lm{box-shadow:inset 0 0 0 100px rgba(255,220,0,.35)}.sq.hl{box-shadow:inset 0 0 0 4px var(--ac)}.sq.sel{box-shadow:inset 0 0 0 100px rgba(80,200,120,.5)}
+.w{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000}.b{color:#1a1a1a}
+#bar{height:14px;background:#222;border-radius:7px;overflow:hidden;margin:8px 0}#bar i{display:block;height:100%;background:#f4f4f4;transition:width .3s}
+#ml{max-height:460px;overflow:auto}.mv{display:grid;grid-template-columns:34px 1fr 1fr;gap:4px;margin-bottom:3px}.mv b{color:var(--mut);font-weight:400}
+.mv span{padding:2px 6px;border-radius:6px;cursor:pointer;border-left:4px solid transparent}.mv span.cur{outline:2px solid var(--ac)}
+.brilliant{border-color:#1abc9c!important}.best{border-color:#3b82f6!important}.good{border-color:#22c55e!important}.inaccuracy{border-color:#eab308!important}.mistake{border-color:#f97316!important}.blunder{border-color:#ef4444!important}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px}.stats big{display:block;font-size:26px}
+svg text{font-size:10px;fill:var(--mut)}.ctl{position:sticky;bottom:0;background:var(--bg);padding:6px 0}
+</style></head><body><main>
+<div class="row" style="justify-content:space-between"><strong>ChessLens</strong><span><button id="th">Light/dark</button> <button id="clr">Clear local data</button></span></div>
+<section id="home"><h1>Understand Every Move You Make</h1>
+<p style="max-width:60ch">Paste a game and let Stockfish grade each move, chart the swings, and turn your mistakes into practice puzzles. Analysis runs locally in your browser; your game is never uploaded.</p>
+<textarea id="pgn" placeholder="Paste PGN or FEN here" aria-label="PGN or FEN"></textarea>
+<div class="row"><button class="p" id="go">Analyze game</button><label class="card" style="padding:7px 12px;cursor:pointer">Upload PGN<input id="up" type="file" accept=".pgn,.txt" hidden></label><button id="smp">Try a sample game</button>
+<label class="mut">Depth <select id="dp"><option value="10">Quick (10)</option><option value="14" selected>Standard (14)</option><option value="18">Deep (18)</option></select></label></div>
+<div id="herr" class="err" role="alert"></div>
+<div class="feat"><div class="card"><b>Move-by-move analysis</b><br><span class="mut">Every position evaluated by Stockfish.</span></div><div class="card"><b>Blunder detection</b><br><span class="mut">Moves colored by evaluation lost.</span></div><div class="card"><b>Accuracy score</b><br><span class="mut">Separate estimates for White and Black.</span></div><div class="card"><b>Mistake puzzles</b><br><span class="mut">Replay your errors and find the better move.</span></div></div>
+<p class="mut">Privacy: nothing leaves your browser except loading the chess libraries from a CDN. Games and puzzle results stay in local storage.</p></section>
+
+<section id="an" class="hide">
+<div class="row"><button id="back">New game</button><b id="ttl"></b><span class="mut" id="st"></span><button id="stop">Stop</button><button id="prac">Practice mistakes</button></div>
+<div class="mut" id="prog"></div>
+<div class="stats" id="sum"></div>
+<div class="g"><div><div id="bd"></div><div class="row ctl"><button data-a="first" aria-label="First">⏮</button><button data-a="prev" aria-label="Previous">◀</button><button data-a="play" aria-label="Play">⏯</button><button data-a="next" aria-label="Next">▶</button><button data-a="last" aria-label="Last">⏭</button><button data-a="flip">Flip</button></div>
+<div class="mut" style="word-break:break-all"><span id="fen"></span> <button id="cf">Copy FEN</button></div></div>
+<div class="card"><div id="ml"></div></div>
+<div class="card" id="eng"><div id="bar"><i></i></div><b id="ev"></b> <span class="mut" id="dep"></span><div id="pv" class="mut"></div><p id="ex"></p><button id="sb">Show best move</button></div></div>
+<div class="card" style="margin-top:12px"><b>Evaluation graph</b> <span class="mut">(click to jump · dots mark mistakes and blunders)</span><svg id="gr" viewBox="0 0 600 130" width="100%" style="cursor:pointer"></svg></div>
+<p class="mut">Classifications and accuracy are this app's own engine-based estimates, not official chess.com or Lichess ratings. Thresholds live in the T object in the script.</p>
+<div id="pz" class="card hide" style="margin-top:12px"></div></section></main>
+<script>
+const $=s=>document.querySelector(s),T={best:5,good:40,inaccuracy:90,mistake:200},U={k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'},V={p:100,n:300,b:320,r:500,q:900,k:0};
+const SAMPLE='[Event "Paris Opera"][White "Paul Morphy"][Black "Duke of Brunswick & Count Isouard"][Date "1858.??.??"][Result "1-0"]\n1.e4 e5 2.Nf3 d6 3.d4 Bg4 4.dxe5 Bxf3 5.Qxf3 dxe5 6.Bc4 Nf6 7.Qb3 Qe7 8.Nc3 c6 9.Bg5 b5 10.Nxb5 cxb5 11.Bxb5+ Nbd7 12.O-O-O Rd8 13.Rxd7 Rxd7 14.Rd1 Qe6 15.Bxd7+ Nxd7 16.Qb8+ Nxb8 17.Rd8# 1-0';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let G,idx=0,ev=[],M=[],flip=0,W=null,run=0,timer,sel=null,PZ=[],pi=0,pmode=0,hl=[];const cache={};
+/* fallback search (shallow, approximate) */
+function mat(c){let s=0;for(const r of c.board())for(const p of r)if(p)s+=(p.color=='w'?1:-1)*V[p.type];return s}
+function fb(fen){const c=new Chess(fen),me=c.turn()=='w'?1:-1;let best=null,bv=-1e9;
+if(c.game_over()){return{cp:c.in_checkmate()?-me*10000:0,best:null,pv:[],depth:0}}
+for(const m of c.moves({verbose:true})){c.move(m);let w=1e9;const rs=c.moves();if(!rs.length)w=c.in_checkmate()?me*1e4:0;else for(const r of rs){c.move(r);w=Math.min(w,me*mat(c));c.undo()}c.undo();if(w>bv){bv=w;best=m}}
+return{cp:me*bv,best:best.from+best.to+(best.promotion||''),pv:[best.from+best.to],depth:2}}
+/* parse */
+function parse(txt){txt=txt.trim();if(!txt)throw'Paste a PGN or FEN first.';const c=new Chess();
+if(!/\[|\d\./.test(txt)&&txt.split(' ').length>=4){const v=c.validate_fen?c.validate_fen(txt):{valid:1};if(!v.valid)throw'That FEN is not valid.';throw'FEN positions can be viewed but need a move list to analyze. Paste a PGN.'}
+if(!c.load_pgn(txt.replace(/\]\s*\[/g,']\n['),{sloppy:true}))throw'Could not read that PGN. Check for typos or illegal moves.';
+const h=c.header(),ms=c.history({verbose:true}),b=new Chess(),fens=[b.fen()],cnt=[];for(const m of ms){cnt.push(b.moves().length);b.move(m.san);fens.push(b.fen())}
+if(!ms.length)throw'The PGN has no moves.';return{h,ms,fens,cnt}}
+/* analysis */
+const cap=x=>Math.max(-1000,Math.min(1000,x)),wp=c=>50+50*(2/(1+Math.exp(-.00368208*c))-1);
+function derive(){M=G.ms.map((m,i)=>{if(!ev[i]||!ev[i+1])return{};const me=m.color=='w'?1:-1,b=me*cap(ev[i].cp),a=me*cap(ev[i+1].cp);let loss=Math.max(0,b-a);if(b<-500)loss*=.5;
+const uci=m.from+m.to+(m.promotion||''),best=uci==ev[i].best;let cls=G.cnt[i]==1?'good':best&&loss<=T.great?'great':loss<=T.good?'good':loss<=T.inaccuracy?'inaccuracy':loss<=T.mistake?'mistake':'blunder';
+return{loss,cls,best,acc:Math.max(0,Math.min(100,103.1668*Math.exp(-.04354*Math.max(0,wp(b)-wp(a))))-3.1669),forced:G.cnt[i]==1}})}
+async function analyze(){const my=++run,d=+$('#dp').value;$('#st').textContent='Starting engine…';if(!W&&!window.__tried){window.__tried=1;W=await startEngine()}
+for(let i=0;i<G.fens.length;i++){if(my!=run)return;$('#st').textContent=W?'Analyzing':'Analyzing (fallback engine: Stockfish failed to load)';
+ev[i]=G.fens[i]&&await sf(G.fens[i],d);$('#prog').textContent=`Position ${i+1} of ${G.fens.length}`;derive();draw()}
+$('#st').textContent=W?'Complete':'Complete (fallback engine, shallow)';$('#prog').textContent=''}
+/* ui */
+function board(fen,last,click){const c=new Chess(fen),b=c.board();let h='';
+for(let r=0;r<8;r++)for(let f=0;f<8;f++){const R=flip?7-r:r,F=flip?7-f:f,sq='abcdefgh'[F]+(8-R),p=b[R][F];
+h+=`<div class="sq ${(R+F)%2?'d':'l'}${last&&(sq==last[0]||sq==last[1])?' lm':''}${hl.includes(sq)?' hl':''}${sel==sq?' sel':''}" data-s="${sq}">${p?`<span class="${p.color}">${U[p.type]}</span>`:''}</div>`}
+$('#bd').innerHTML=h;$('#bd').onclick=e=>{const s=e.target.closest('.sq');if(s&&click)click(s.dataset.s)}}
+const fmt=e=>!e?'…':e.mate!=null?'M'+Math.abs(e.mate):(e.cp>=0?'+':'')+(e.cp/100).toFixed(2);
+function uciSan(fen,u){if(!u)return'—';const c=new Chess(fen),m=c.move({from:u.slice(0,2),to:u.slice(2,4),promotion:u[4]});return m?m.san:u}
+function draw(){if(!G)return;const fen=G.fens[idx],m=G.ms[idx-1],e=ev[idx];if(!pmode)board(fen,m&&[m.from,m.to]);$('#fen').textContent=fen;
+$('#ttl').textContent=`${G.h.White||'White'} vs ${G.h.Black||'Black'} · ${G.h.Result||'*'} · ${G.h.Date||''}`;
+$('#bar i').style.width=(e?50+50*(2/(1+Math.exp(-.0035*cap(e.cp)))-1):50)+'%';$('#ev').textContent=fmt(e);$('#dep').textContent=e?'depth '+e.depth:'';
+const pre=ev[idx];$('#pv').textContent=pre&&pre.pv.length?'Line: '+pre.pv.slice(0,6).map((u,i)=>{try{return uciSan(G.fens[idx],u)}catch(_){return u}}).join(' '):'';
+let ml='';for(let i=0;i<G.ms.length;i+=2){ml+=`<div class="mv"><b>${i/2+1}.</b>`;for(const j of[i,i+1])ml+=G.ms[j]?`<span class="${(M[j]||{}).cls||''}${idx==j+1?' cur':''}" data-i="${j+1}">${esc(G.ms[j].san)}</span>`:'<span></span>';ml+='</div>'}
+$('#ml').innerHTML=ml;const cu=$('#ml .cur');if(cu)cu.scrollIntoView({block:'nearest'});
+const x=m&&M[idx-1];$('#ex').innerHTML=x&&x.cls?explain(idx-1):'<span class="mut">Select a move to see the engine\'s view.</span>';
+sumDraw();graph()}
+function explain(i){const m=G.ms[i],x=M[i],b=ev[i],bs=uciSan(G.fens[i],b.best);let why='';
+if(x.forced)why='This was the only legal move.';else if(x.best)why='You found the engine\'s top choice.';else if(['inaccuracy','mistake','blunder'].includes(x.cls)){
+if(/#/.test(bs))why='A forced mate was available.';else if(/\+/.test(bs))why='A strong check was available.';else if(bs.includes('x'))why='A capture was available that kept more value.';
+else why='The engine prefers another move here because it preserves a better evaluation. Explore the suggested line to understand the difference.'}
+return`<b>${esc(m.san)}</b> <span class="mut">${x.cls}${x.forced?' (forced)':''}</span><br>Best: <b>${esc(bs)}</b> · before ${fmt(ev[i])} → after ${fmt(ev[i+1])}<br><span class="mut">${why}</span>`}
+function sumDraw(){const s=c=>{const a=G.ms.map((m,i)=>m.color==c?M[i]:null).filter(x=>x&&x.cls&&x.cls!='unrated');return{n:a.length,acc:a.length?a.reduce((t,x)=>t+x.acc,0)/a.length:0,acpl:a.length?a.reduce((t,x)=>t+x.loss,0)/a.length:0,i:a.filter(x=>x.cls=='inaccuracy').length,m:a.filter(x=>x.cls=='mistake').length,b:a.filter(x=>x.cls=='blunder').length}},w=s('w'),k=s('b');
+let big=-1,bi=-1;M.forEach((x,i)=>{if(x.loss>big){big=x.loss;bi=i}});
+const card=(n,v)=>`<div class="card"><span class="mut">${n}</span><big>${v}</big></div>`;
+$('#sum').innerHTML=card('White accuracy',w.n?w.acc.toFixed(1):'…')+card('Black accuracy',k.n?k.acc.toFixed(1):'…')+card('Avg centipawn loss',w.n?`${w.acpl.toFixed(0)} / ${k.acpl.toFixed(0)}`:'…')+
+card('Inacc · mistakes · blunders',`${w.i}·${w.m}·${w.b} / ${k.i}·${k.m}·${k.b}`)+(bi>=0&&big>T.inaccuracy?`<div class="card" style="cursor:pointer" data-i="${bi+1}"><span class="mut">Biggest mistake</span><big>${Math.floor(bi/2)+1}${bi%2?'…':'.'} ${esc(G.ms[bi].san)}</big></div>`:'')+
+`<div class="card mut" title="Estimate from engine evaluation, not an official rating.">Accuracy is an estimate (hover/tap for note): it is not an official rating.</div>`}
+function graph(){let p=[],dots='';const n=G.fens.length-1,X=i=>i/Math.max(1,n)*600,Y=c=>65-cap(c)/1000*60;
+ev.forEach((e,i)=>{if(e){p.push(X(i)+','+Y(e.cp));const c=M[i-1]&&M[i-1].cls;if(c=='mistake'||c=='blunder')dots+=`<circle cx="${X(i)}" cy="${Y(e.cp)}" r="4" fill="${c=='blunder'?'#ef4444':'#f97316'}"><title>${fmt(e)}</title></circle>`}});
+$('#gr').innerHTML=`<line x1="0" x2="600" y1="65" y2="65" stroke="gray"/><line x1="${X(idx)}" x2="${X(idx)}" y1="0" y2="130" stroke="var(--ac)"/><polyline points="${p.join(' ')}" fill="none" stroke="var(--tx)" stroke-width="2"/>${dots}<text x="2" y="10">+10 White</text><text x="2" y="127">−10 Black</text>`}
+function go(i){pmode=0;$('#pz').classList.add('hide');idx=Math.max(0,Math.min(G.fens.length-1,i));hl=[];draw()}
+function load(txt){try{G=parse(txt)}catch(e){$('#herr').textContent=e;return}$('#herr').textContent='';ev=[];M=[];idx=0;$('#home').classList.add('hide');$('#an').classList.remove('hide');try{localStorage.setItem('cl_last',txt)}catch(_){}
+if(!window.WebAssembly)$('#st').textContent='No WebAssembly: fallback engine';draw();analyze()}
+/* puzzles */
+function pz(){PZ=M.map((x,i)=>({i,x})).filter(o=>['inaccuracy','mistake','blunder'].includes(o.x.cls));if(!PZ.length){alert('No mistakes found yet (or analysis still running).');return}pi=0;pmode=1;$('#pz').classList.remove('hide');showPz()}
+function showPz(){const o=PZ[pi],m=G.ms[o.i],fen=G.fens[o.i];sel=null;flip=m.color=='b'?1:0;
+const box=$('#pz');box.innerHTML=`<b>Puzzle ${pi+1}/${PZ.length}</b> — ${m.color=='w'?'White':'Black'} to move. Find a better move than the one played.<div id="pr" style="margin:8px 0"></div><div class="row"><button id="pp">Previous</button><button id="pn">Next</button><button id="pshow">Reveal</button><button id="pexit">Exit</button></div>`;
+board(fen,null,sq=>{const c=new Chess(fen);if(!sel){if(c.moves({square:sq}).length){sel=sq;board(fen,null,arguments.callee)}return}
+const mv=c.move({from:sel,to:sq,promotion:'q'});const f=sel;sel=null;if(!mv){board(fen,null,arguments.callee);return}
+const ok=f+sq+(mv.promotion&&mv.promotion!='q'?mv.promotion:'')==ev[o.i].best||(f+sq)==(ev[o.i].best||'').slice(0,4);$('#pr').textContent=ok?'Correct! That is the engine\'s choice.':'Try again — that is not the best move.';
+try{const r=JSON.parse(localStorage.getItem('cl_pz')||'{}');r[G.fens[o.i]]=ok;localStorage.setItem('cl_pz',JSON.stringify(r))}catch(_){}
+if(ok)board(c.fen(),[f,sq]);else board(fen,null,arguments.callee)});
+$('#pp').onclick=()=>{pi=(pi+PZ.length-1)%PZ.length;showPz()};$('#pn').onclick=()=>{pi=(pi+1)%PZ.length;showPz()};
+$('#pshow').onclick=()=>{$('#pr').textContent=`You played ${m.san}. Best: ${uciSan(fen,ev[o.i].best)}. Line: ${ev[o.i].pv.slice(0,6).map(u=>{try{return uciSan(fen,u)}catch(_){return u}}).join(' ')}`};
+$('#pexit').onclick=()=>go(idx);hl=[]}
+/* events */
+$('#go').onclick=()=>load($('#pgn').value);$('#smp').onclick=()=>{$('#pgn').value=SAMPLE;load(SAMPLE)};
+$('#up').onchange=async e=>{const f=e.target.files[0];if(f)$('#pgn').value=await f.text()};
+$('#back').onclick=()=>{run++;clearInterval(timer);$('#an').classList.add('hide');$('#home').classList.remove('hide')};
+$('#stop').onclick=()=>{run++;$('#st').textContent='Stopped by you';$('#prog').textContent=''};$('#prac').onclick=pz;
+$('#cf').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(G.fens[idx]);
+$('#sb').onclick=()=>{const e=ev[idx];if(!e||!e.best)return;hl=[e.best.slice(0,2),e.best.slice(2,4)];draw();$('#ex').innerHTML+=`<br>Engine suggests <b>${esc(uciSan(G.fens[idx],e.best))}</b>`};
+$('#ml').onclick=e=>{const s=e.target.closest('[data-i]');if(s)go(+s.dataset.i)};$('#sum').onclick=e=>{const s=e.target.closest('[data-i]');if(s)go(+s.dataset.i)};
+$('#gr').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();go(Math.round((e.clientX-r.left)/r.width*(G.fens.length-1)))};
+function act(a){const L=G.fens.length-1;if(a=='first')go(0);if(a=='prev')go(idx-1);if(a=='next')go(idx+1);if(a=='last')go(L);if(a=='flip'){flip^=1;draw()}
+if(a=='play'){if(timer){clearInterval(timer);timer=0}else timer=setInterval(()=>{if(idx>=L){clearInterval(timer);timer=0}else go(idx+1)},900)}}
+document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>act(b.dataset.a));
+addEventListener('keydown',e=>{if(!G||$('#an').classList.contains('hide')||/TEXTAREA|SELECT/.test(e.target.tagName))return;const k={ArrowLeft:'prev',ArrowRight:'next',Home:'first',End:'last',' ':'play'}[e.key];if(k){e.preventDefault();act(k)}});
+$('#th').onclick=()=>{const r=document.documentElement,d=r.dataset.theme?r.dataset.theme=='dark':matchMedia('(prefers-color-scheme:dark)').matches;r.dataset.theme=d?'light':'dark'};
+$('#clr').onclick=()=>{try{localStorage.clear()}catch(_){}cache&&Object.keys(cache).forEach(k=>delete cache[k]);alert('Local data cleared.')};
+if(/Mobi|Android/i.test(navigator.userAgent))$('#dp').value='10';
+</script>
+<script>
+/* ===== v2 patch layer: overrides earlier functions; existing features kept ===== */
+const PN={p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'};
+/* Small LOCAL opening list (real ECO codes only). Anything not matched => "Opening not identified." */
+const OPEN=[['e4 e5','C20',"King's Pawn Game"],['e4 e5 Nf3','C40',"King's Knight Opening"],['e4 e5 Nf3 Nc6','C44',"King's Knight Opening: Normal Variation"],['e4 e5 Nf3 Nc6 Bb5','C60','Ruy Lopez'],['e4 e5 Nf3 Nc6 Bc4','C50','Italian Game'],['e4 e5 Nf3 d6','C41','Philidor Defense'],['e4 c5','B20','Sicilian Defense'],['e4 e6','C00','French Defense'],['e4 c6','B10','Caro-Kann Defense'],['e4 d6','B07','Pirc Defense'],['d4 d5','D00',"Queen's Pawn Game"],['d4 d5 c4','D06',"Queen's Gambit"],['d4 Nf6','A45','Indian Defense'],['c4','A10','English Opening'],['Nf3','A04','Zukertort Opening']];
+let ST='loading',LOG=[],cur=null,curRej=null,busy=0,chain=Promise.resolve(),gen=0,stopP=null,X=null,fenMode=0,SRC='',readyP;
+document.head.insertAdjacentHTML('beforeend','<style>@media print{button,textarea,#home,.ctl,details,select,#pz{display:none!important}body{background:#fff;color:#000}}input{font:inherit;padding:6px;border-radius:8px;border:1px solid var(--ln);background:var(--card);color:var(--tx)}.mv span{font-weight:600}</style>');
+document.querySelector('main .row').insertAdjacentHTML('afterend','<div class="card" style="margin-bottom:10px"><b>Engine diagnostics</b> <span id="est" role="status" aria-live="polite"></span><div class="row"><button id="te">Test engine</button><button id="tt">Run self-tests</button><button id="rt">Reload engine</button><button id="cl">Clear debug log</button><button id="dc">Copy diagnostics</button><button id="dd">Download diagnostics</button><label class="mut"><input type="checkbox" id="inc"> Include current game</label><span id="dmsg" role="status" aria-live="polite" class="mut"></span></div><div id="apx" class="err hide" role="alert">Approximate results: the fallback engine is a shallow material search. Moves are unrated and puzzles are disabled.</div><details open><summary>Diagnostics</summary><pre id="dgn" style="white-space:pre-wrap;font-size:12px;overflow:auto"></pre></details><details><summary>Debug log</summary><pre id="dbg" style="white-space:pre-wrap;font-size:12px"></pre></details></div>');
+$('#ttl').insertAdjacentHTML('afterend','<div id="op" class="mut"></div>');
+$('#prac').parentElement.insertAdjacentHTML('beforeend','<button id="xb" class="hide">Back to game</button><button id="x1">Copy PGN</button><button id="x2">Download PGN</button><button id="x3">Download JSON</button><button id="x4">Print report</button><button id="x5">Copy summary</button>');
+$('#bar').setAttribute('role','img');$('#ev').setAttribute('aria-live','polite');$('#bd').setAttribute('role','group');$('#bd').setAttribute('aria-label','Chess board');
+[...document.querySelectorAll('p.mut')].find(p=>/Classifications/.test(p.textContent)).textContent='Classification is based on engine evaluation and is an estimate, not an official rating.';
+/* ---- engine: same-origin StockfishClient (no blob:, no CDN). "Active" only after the client's test position returns bestmove ---- */
+const ENG=new StockfishClient({base:window.CL_ENGINE_BASE||'engine/'});
+function setSt(s){ST=s;$('#est').textContent={ready:'Stockfish ready',loading:'Stockfish loading',fallback:'Stockfish unavailable — fallback engine active',stopped:'Analysis stopped'}[s]}
+ENG.onchange=st=>{W=st.state=='active'?ENG:null;const A=Object.entries(st.assets).map(([k,v])=>'  '+v.url+' → '+(v.ok?'OK':'MISSING')+' ('+v.status+')').join('\n');
+$('#dgn').textContent=['Worker URL:   '+st.workerUrl,'Engine assets:\n'+(A||'  (not checked yet)'),'Worker:       '+st.worker,'WASM:         '+st.wasm,'UCI:          '+st.uci,'Ready:        '+st.ready,'Engine:       '+(st.version||'n/a'),'State:        '+st.state,'Last error:   '+(st.lastError||'none'),'Last bestmove: '+(st.lastBestmove||'n/a'),'Last depth:   '+(st.lastDepth??'n/a')].join('\n');
+$('#dbg').textContent=st.log.join('\n')};
+async function startEngine(){setSt('loading');ENG.destroy();await ENG.load();setSt(W?'ready':'fallback');$('#apx').classList.toggle('hide',!!W)}
+function stopEng(){ENG.stop()}
+async function testEngine(){const r=await ENG.test();alert(r.ok?'Stockfish test passed: bestmove '+r.best+' at depth '+r.depth:'Stockfish test FAILED: '+r.error);return r.ok}
+function pvSan(fen,pv){const c=new Chess(fen),o=[];for(const u of pv){const m=c.move({from:u.slice(0,2),to:u.slice(2,4),promotion:u[4]});if(!m)break;o.push(m.san)}return o}
+/* Evals are stored from WHITE's perspective. mate: +n White mates in n, -n Black mates in n, 0 = checkmated (win = winner). cp is null when mate is set. */
+function mkR(fen,side,src,ms,ls,best){const l=ls[0];return{fen,side,src,ms:Math.round(ms),cp:l.cp,mate:l.mate,win:l.win,depth:l.depth,pv:l.pv,best,bestSan:best?uciSan(fen,best):null,pvSan:pvSan(fen,l.pv),lines:ls.map(x=>({...x,san:pvSan(fen,x.pv)})),approx:src=='fallback'}}
+const sc=e=>e.mate!=null?(e.mate==0?e.win:Math.sign(e.mate))*1000:cap(e.cp);
+const fm=e=>!e?'…':e.mate!=null?(e.mate==0?'#':'M'+e.mate):(e.cp>=0?'+':'')+(e.cp/100).toFixed(2);
+function sf(fen,d,pv=1){const k=fen+'|'+d+'|'+pv+'|'+(W?'S':'F');if(cache[k])return Promise.resolve(cache[k]);const c=new Chess(fen),side=c.turn()=='w'?1:-1;
+if(c.game_over())return Promise.resolve(cache[k]=mkR(fen,side,'rules',0,[{rank:1,depth:0,pv:[],...(c.in_checkmate()?{mate:0,win:-side,cp:null}:{mate:null,cp:0})}],null));
+if(!W){const o=fb(fen);return Promise.resolve(cache[k]=mkR(fen,side,'fallback',0,[{rank:1,cp:o.cp,mate:null,depth:2,pv:o.pv}],o.best))}
+return ENG.analyze(fen,{depth:d,multipv:pv}).then(r=>cache[k]=mkR(fen,r.side,'stockfish',r.ms,r.lines,r.best))}
+/* ---- classification ---- */
+function hanging(i,m){const c=new Chess(G.fens[i+1]),caps=c.moves({verbose:true}).filter(x=>x.to==m.to&&x.flags.includes('c'));if(!caps.length)return false;c.move(caps[0]);return V[m.piece]>=300&&!c.moves({verbose:true}).some(x=>x.to==m.to&&x.flags.includes('c'))}
+function derive(){M=G.ms.map((m,i)=>{const a0=ev[i],a1=ev[i+1];if(!a0||!a1)return{};const me=m.color=='w'?1:-1,b=me*sc(a0),a=me*sc(a1),approx=a0.src=='fallback'||a1.src=='fallback';if(approx)return{cls:'unrated',approx:true,loss:0,tags:[],forced:false};
+let loss=Math.max(0,b-a);if(b<-500)loss*=.5;const forced=G.cnt[i]==1;if(forced)loss=0;const best=!approx&&(m.from+m.to+(m.promotion||''))==a0.best;
+const cls=forced?'forced':best&&loss<=T.best?'best':loss<=T.good?'good':loss<=T.inaccuracy?'inaccuracy':loss<=T.mistake?'mistake':'blunder',tags=[],mt=(e,s)=>e.mate!=null&&e.mate!=0&&Math.sign(e.mate)==s;
+if(mt(a0,me)&&!mt(a1,me))tags.push('Missed mate');if(mt(a1,-me)||(a1.mate==0&&a1.win==-me))tags.push('Allowed mate');
+if(!best&&loss>T.good){const bs=a0.bestSan||'';if(bs.includes('x')&&!m.san.includes('x'))tags.push('Missed capture');if(/[+#]/.test(bs)&&!/[+#]/.test(m.san))tags.push('Missed check');if(hanging(i,m))tags.push('Hanging piece')}
+return{loss,cls,best,b,a,forced,tags,approx,acc:Math.max(0,Math.min(100,103.1668*Math.exp(-.04354*Math.max(0,wp(b)-wp(a)))-3.1669))}})}
+async function analyze(){const my=++run;stopEng();const d=+$('#dp').value;$('#st').textContent='Waiting for engine…';await readyP;if(my!=run)return;
+$('#apx').classList.toggle('hide',!!W);$('#st').textContent=W?'Analyzing with Stockfish (3 lines)':'Analyzing with FALLBACK engine (approximate)';
+const useSF=!!W;for(let i=0;i<G.fens.length;i++){if(my!=run)return;if(useSF&&!W){$('#st').textContent='Stockfish became unavailable mid-analysis — partial results kept; press Reload engine and analyze again';return}try{ev[i]=await sf(G.fens[i],d,3)}catch(e){if(my!=run)return;$('#st').textContent='Engine error: '+e.message;log('Analysis error: '+e.message);return}
+$('#prog').textContent=`Position ${i+1} of ${G.fens.length}`;if(!fenMode)derive();draw()}
+$('#st').textContent=W?'Complete':'Complete (approximate — fallback engine)';$('#prog').textContent=''}
+/* ---- import / load ---- */
+async function importUrl(u){let url;try{url=new URL(u)}catch(_){throw new Error('That is not a valid URL.')}const h=url.hostname.replace(/^www\./,'');
+if(h=='lichess.org'){const m=/^\/([A-Za-z0-9]{8})(?:[A-Za-z0-9]{4})?(?:\/|$)/.exec(url.pathname);if(!m)throw new Error('No Lichess game ID found (expected lichess.org/xxxxxxxx).');let r;
+try{r=await fetch('https://lichess.org/game/export/'+m[1]+'?clocks=0&evals=0',{headers:{Accept:'application/x-chess-pgn'}})}catch(_){throw new Error('The import was blocked by the network or this page\'s security policy. Download the PGN from Lichess and paste it here.')}
+if(r.status==404)throw new Error('Game not found — it may be deleted or private.');if(!r.ok)throw new Error('Lichess returned status '+r.status+'.');return r.text()}
+if(h=='chess.com'&&/\/game\/(live|daily)\/\d+/.test(url.pathname))throw new Error('Chess.com import needs a server-side route, which this single-file build lacks. Download the PGN from Chess.com and paste it here.');
+throw new Error('Unsupported link. Use a lichess.org or chess.com game URL, or paste a PGN.')}
+async function load(txt){txt=txt.trim();$('#herr').textContent='';if(/^https?:\/\//i.test(txt)){try{txt=await importUrl(txt)}catch(e){$('#herr').textContent=e.message;return}}
+stopEng();X=null;pmode=0;let g;if(!/\[|\d\./.test(txt)&&txt.split(/\s+/).length>=4){const c=new Chess(),v=c.validate_fen(txt);if(!v.valid){$('#herr').textContent='Invalid FEN: '+v.error;return}fenMode=1;c.load(txt);G={h:{},ms:[],fens:[c.fen()],cnt:[]}}
+else{try{G=parse(txt)}catch(e){$('#herr').textContent=e;return}fenMode=0}
+SRC=txt;ev=[];M=[];idx=0;flip=0;$('#home').classList.add('hide');$('#an').classList.remove('hide');
+for(const e of[$('#sum'),$('#ml').parentElement,$('#gr').parentElement,$('#prac')])e.classList.toggle('hide',!!fenMode);
+try{localStorage.setItem('cl_last',txt)}catch(_){}draw();analyze()}
+/* ---- view ---- */
+function opening(){if(fenMode)return null;const san=G.ms.map(m=>m.san),h=G.h;let b=null,n=0;for(const o of OPEN){const s=o[0].split(' ');if(s.length<=san.length&&s.every((x,i)=>x==san[i])&&s.length>n){b=o;n=s.length}}
+if(h.Opening||h.ECO)return{name:h.Opening||'',eco:h.ECO||''};return b?{name:b[2],eco:b[1],out:n<san.length?`${Math.floor(n/2)+1}${n%2?'…':'.'} ${san[n]}`:null}:null}
+function board(fen,last,click){const c=new Chess(fen),b=c.board();let h='';for(let r=0;r<8;r++)for(let f=0;f<8;f++){const R=flip?7-r:r,F=flip?7-f:f,sq='abcdefgh'[F]+(8-R),p=b[R][F];
+h+=`<div class="sq ${(R+F)%2?'d':'l'}${last&&(sq==last[0]||sq==last[1])?' lm':''}${hl.includes(sq)?' hl':''}${sel==sq?' sel':''}" data-s="${sq}" role="button" aria-label="${sq} ${p?(p.color=='w'?'white ':'black ')+PN[p.type]:'empty'}">${p?`<span class="${p.color}" aria-hidden="true">${U[p.type]}</span>`:''}</div>`}
+$('#bd').innerHTML=h;$('#bd').onclick=e=>{const s=e.target.closest('.sq');if(s&&click)click(s.dataset.s)}}
+const SYM={best:'!',good:'',inaccuracy:'?!',mistake:'?',blunder:'??',forced:' (forced)'};
+function draw(){if(!G)return;const inX=!!X,fen=inX?X.fens[X.i]:G.fens[idx],m=!inX&&G.ms[idx-1],e=inX?null:ev[idx];
+if(!pmode)board(fen,inX?(X.i?[X.mv[X.i-1].from,X.mv[X.i-1].to]:null):m&&[m.from,m.to]);$('#fen').textContent=fen;$('#xb').classList.toggle('hide',!inX);
+$('#ttl').textContent=fenMode?'FEN analysis':`${G.h.White||'White'} vs ${G.h.Black||'Black'} · ${G.h.Result||'*'} · ${G.h.Date||''}`;
+const o=opening(),p=fen.split(' ');$('#op').textContent=fenMode?`Side to move: ${p[1]=='w'?'White':'Black'} · Castling: ${p[2]} · En passant: ${p[3]} · Halfmove: ${p[4]} · Fullmove: ${p[5]}`:o?`${o.name}${o.eco?' ('+o.eco+')':''}${o.out?' · first move outside this small local list: '+o.out:''}`:'Opening not identified.';
+$('#bar i').style.width=(e?50+50*(2/(1+Math.exp(-.0035*sc(e)))-1):50)+'%';$('#bar').setAttribute('aria-label','Evaluation '+fm(e));$('#ev').textContent=(e&&e.approx?'≈ ':'')+fm(e);
+$('#dep').textContent=e?`depth ${e.depth} · ${e.src} · ${e.ms}ms`:inX?'variation (not evaluated)':'';
+$('#pv').innerHTML=e?e.lines.map((l,i)=>`<div><button data-ln="${i}" aria-label="Explore line ${l.rank}">${l.rank}. ${fm(l)}</button> <b>${esc(l.san[0]||'')}</b> <span class="mut">d${l.depth} ${esc(l.san.slice(0,8).join(' '))}</span></div>`).join(''):'';
+if(!fenMode){let ml='';for(let i=0;i<G.ms.length;i+=2){ml+=`<div class="mv"><b>${i/2+1}.</b>`;for(const j of[i,i+1]){const x=M[j]||{};ml+=G.ms[j]?`<span class="${x.cls||''}${!inX&&idx==j+1?' cur':''}" data-i="${j+1}" aria-label="${esc(G.ms[j].san)} ${x.cls||''}" title="${x.cls?`${x.cls}: ${fm(ev[j])} → ${fm(ev[j+1])}, loss ${x.loss.toFixed(0)}cp${x.approx?' (approximate)':''}`:''}">${esc(G.ms[j].san)}${SYM[x.cls]||''}${x.approx?'~':''}</span>`:'<span></span>'}ml+='</div>'}
+$('#ml').innerHTML=ml;const cu=$('#ml .cur');if(cu)cu.scrollIntoView({block:'nearest'});sumDraw();graph()}
+$('#ex').innerHTML=inX?'<span class="mut">Exploring an engine line. Step with ◀ ▶; “Back to game” returns without changing the game.</span>':fenMode?'<span class="mut">Position analysis: no moves were played, so no accuracy score or move classification is shown.</span>':m&&M[idx-1]&&M[idx-1].cls?explain(idx-1):'<span class="mut">Select a move to see the engine\'s view.</span>'}
+function explain(i){const m=G.ms[i],x=M[i],b=ev[i],a=ev[i+1];let why=x.cls=='unrated'?'Not rated: the fallback engine is too shallow for trustworthy labels.':x.forced?'This was the only legal move.':x.best?"You played the engine's top choice.":'';
+if(!why&&['inaccuracy','mistake','blunder'].includes(x.cls))why=x.tags.length?x.tags.join('; ')+'.':'The engine prefers another move here because it preserves a better evaluation. Explore the suggested line to understand the difference.';
+if(x.b<-500&&!x.forced)why+=' The position was already losing, so the penalty is halved.';
+return`<b>${esc(m.san)}</b> <span class="mut">${x.cls}${x.approx?' (approximate)':''}</span><br>Best: <b>${esc(b.bestSan||'—')}</b> · ${fm(b)} → ${fm(a)} (loss ${x.loss.toFixed(0)}cp)<br><span class="mut">${why}</span>`}
+function graph(){let p=[],dots='';const n=G.fens.length-1,Xp=i=>i/Math.max(1,n)*600,Y=v=>65-v/1000*60;
+ev.forEach((e,i)=>{if(e){p.push(Xp(i)+','+Y(sc(e)));const c=M[i-1]&&M[i-1].cls;if(c=='mistake'||c=='blunder')dots+=`<circle cx="${Xp(i)}" cy="${Y(sc(e))}" r="4" fill="${c=='blunder'?'#ef4444':'#f97316'}"><title>${c} · ${fm(e)}</title></circle>`}});
+$('#gr').innerHTML=`<line x1="0" x2="600" y1="65" y2="65" stroke="gray"/><line x1="${Xp(idx)}" x2="${Xp(idx)}" y1="0" y2="130" stroke="var(--ac)"/><polyline points="${p.join(' ')}" fill="none" stroke="var(--tx)" stroke-width="2"/>${dots}<text x="2" y="10">White ↑ (capped at ±10)</text><text x="2" y="127">Black ↓</text>`}
+function go(i){X=null;pmode=0;$('#pz').classList.add('hide');idx=Math.max(0,Math.min(G.fens.length-1,i));hl=[];draw()}
+function explore(i){const e=ev[idx],c=new Chess(G.fens[idx]);X={fens:[c.fen()],mv:[],i:0};for(const u of e.lines[i].pv){const m=c.move({from:u.slice(0,2),to:u.slice(2,4),promotion:u[4]});if(!m)break;X.mv.push(m);X.fens.push(c.fen())}X.i=Math.min(1,X.mv.length);draw()}
+function act(a){const L=G.fens.length-1;if(X){const n=X.fens.length-1;if(a=='first')X.i=0;if(a=='prev')X.i=Math.max(0,X.i-1);if(a=='next')X.i=Math.min(n,X.i+1);if(a=='last')X.i=n;if(a=='flip')flip^=1;return draw()}
+if(a=='first')go(0);if(a=='prev')go(idx-1);if(a=='next')go(idx+1);if(a=='last')go(L);if(a=='flip'){flip^=1;draw()}
+if(a=='play'){if(timer){clearInterval(timer);timer=0}else timer=setInterval(()=>{if(idx>=L){clearInterval(timer);timer=0}else go(idx+1)},900)}}
+/* ---- puzzles: Stockfish-only, hint then line, saved attempts ---- */
+function pz(){if(fenMode||ev.some(e=>e&&e.src=='fallback')||!ev.length){alert('Puzzles need completed real-Stockfish analysis. Fallback results are never used.');return}
+PZ=M.map((x,i)=>({i,x})).filter(o=>['inaccuracy','mistake','blunder'].includes(o.x.cls));if(!PZ.length){alert('No mistakes found (or analysis is still running).');return}pi=0;pmode=1;$('#pz').classList.remove('hide');showPz()}
+const pzStore=f=>{try{const r=JSON.parse(localStorage.getItem('cl_pz2')||'{}');f(r);localStorage.setItem('cl_pz2',JSON.stringify(r))}catch(_){}};
+function showPz(){const o=PZ[pi],fen=G.fens[o.i],m=G.ms[o.i],best=ev[o.i].best,id=(G.h.Date||'?')+'#'+o.i+'#'+fen.split(' ')[0].slice(0,30),t0=Date.now();let tries=0,done=0;sel=null;flip=m.color=='b'?1:0;
+$('#pz').innerHTML=`<b>Puzzle ${pi+1}/${PZ.length}</b> — ${m.color=='w'?'White':'Black'} to move. Find the best move: click the board or type it.<div class="row"><input id="pin" aria-label="Your move" placeholder="Nf3 or g1f3"><button id="pok">Check</button></div><div id="pr" role="status"></div><div class="row"><button id="pp">Previous</button><button id="pn">Next</button><button id="pshow">Reveal</button><button id="prs">Reset progress</button><button id="pexit">Exit</button></div>`;
+const secs=()=>Math.round((Date.now()-t0)/1000),attempt=u=>{if(done)return;tries++;if(u.slice(0,4)==best.slice(0,4)){done=1;$('#pr').textContent='Correct — '+uciSan(fen,best)+' is the engine choice.';pzStore(r=>{r[id]={ok:1,tries,secs:secs()}})}
+else if(tries==1)$('#pr').textContent='Not quite. Hint: move the '+PN[new Chess(fen).get(best.slice(0,2)).type]+' on '+best.slice(0,2)+'.';
+else{done=1;$('#pr').textContent='Engine line: '+ev[o.i].pvSan.slice(0,6).join(' ');pzStore(r=>{r[id]={ok:0,tries,secs:secs()}})}};
+const clk=sq=>{const c=new Chess(fen);if(!sel){if(c.moves({square:sq}).length){sel=sq;board(fen,null,clk)}return}const f=sel;sel=null;if(c.move({from:f,to:sq,promotion:'q'}))attempt(f+sq);board(fen,null,clk)};board(fen,null,clk);
+$('#pok').onclick=()=>{const v=$('#pin').value.trim(),c=new Chess(fen);let mv=/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(v)?c.move({from:v.slice(0,2),to:v.slice(2,4),promotion:v[4]||'q'}):c.move(v,{sloppy:true});if(!mv){$('#pr').textContent='That is not a legal move here.';return}attempt(mv.from+mv.to)};
+$('#pp').onclick=()=>{pi=(pi+PZ.length-1)%PZ.length;showPz()};$('#pn').onclick=()=>{pi=(pi+1)%PZ.length;showPz()};
+$('#pshow').onclick=()=>{$('#pr').textContent=`You played ${m.san}. Best: ${uciSan(fen,best)}. Line: ${ev[o.i].pvSan.slice(0,6).join(' ')}`};
+$('#prs').onclick=()=>{try{localStorage.removeItem('cl_pz2')}catch(_){}$('#pr').textContent='Progress reset.'};$('#pexit').onclick=()=>go(idx)}
+/* ---- exports ---- */
+const dl=(n,t,ty)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:ty}));a.download=n;a.click()},acc=c=>{const a=G.ms.map((m,i)=>m.color==c?M[i]:null).filter(x=>x&&x.cls&&x.cls!='unrated');return a.length?(a.reduce((t,x)=>t+x.acc,0)/a.length).toFixed(1):'n/a'};
+function summary(){const o=opening();let bi=-1,bl=0;M.forEach((x,i)=>{if(x.loss>bl){bl=x.loss;bi=i}});return fenMode?`FEN analysis: ${G.fens[0]}\nBest: ${ev[0]&&ev[0].bestSan} (${fm(ev[0])})`:`${G.h.White||'White'} vs ${G.h.Black||'Black'} (${G.h.Result||'*'}, ${G.h.Date||''})\nOpening: ${o?o.name+' '+o.eco:'not identified'}\nAccuracy (estimate) White ${acc('w')} / Black ${acc('b')}\nMistakes: ${M.filter(x=>x.cls=='mistake').length}, blunders: ${M.filter(x=>x.cls=='blunder').length}\nBiggest mistake: ${bi>=0?G.ms[bi].san+' (−'+bl.toFixed(0)+'cp)':'none'}\nEngine: ${ev.some(e=>e&&e.src=='fallback')?'fallback (approximate)':'Stockfish'}`}
+$('#x1').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(SRC);$('#x2').onclick=()=>dl('game.pgn',SRC,'text/plain');$('#x4').onclick=()=>print();$('#x5').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(summary());
+$('#x3').onclick=()=>dl('analysis.json',JSON.stringify({headers:G.h,fen:G.fens[0],opening:opening(),positions:ev,moves:G.ms.map((m,i)=>({san:m.san,...M[i]})),note:'Classification is an estimate, not an official rating.'},null,1),'application/json');
+/* ---- self-tests (run from the Self-tests button) ---- */
+function tests(){const R=[],t=(n,ok)=>R.push((ok?'PASS ':'FAIL ')+n),sv=[G,ev,M,fenMode];
+t('mate M3',fm({mate:3})=='M3');t('mate M-2',fm({mate:-2})=='M-2');t('cp +0.35',fm({cp:35})=='+0.35');t('mate not cp',sc({mate:2})==1000&&sc({mate:-2})==-1000);t('graph cap',sc({cp:5000})==1000);
+const bad=s=>{try{parse(s);return false}catch(_){return true}};t('empty PGN',bad(''));t('garbage PGN',bad('1. e4 e9'));t('valid PGN',!bad(SAMPLE));t('FEN invalid',!new Chess().validate_fen('x y z').valid);t('engine verified (needs /engine assets)',!!W);t('FEN valid',new Chess().validate_fen('6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1').valid);
+G=parse(SAMPLE);const E=(c,s='stockfish')=>({cp:c,mate:null,best:'a1a1',bestSan:'x',src:s,lines:[]});
+ev=[E(0),E(-400),E(0)];derive();t('White blunder from White view',M[0].cls=='blunder');ev=[E(0),E(0),E(400)];derive();t('Black blunder from Black view',M[1].cls=='blunder');
+ev=[E(0,'fallback'),E(0,'fallback')];derive();t('fallback gives no rating',M[0].cls=='unrated');
+[G,ev,M,fenMode]=sv;TESTS={at:new Date().toISOString(),res:R};alert(R.join('\n'))}
+/* ---- wiring ---- */
+$('#pv').onclick=e=>{const b=e.target.closest('[data-ln]');if(b)explore(+b.dataset.ln)};$('#xb').onclick=()=>go(idx);
+$('#rt').onclick=()=>{run++;readyP=startEngine()};$('#cl').onclick=()=>ENG.clearLog();$('#te').onclick=()=>testEngine();$('#tt').onclick=tests;
+$('#stop').onclick=()=>{run++;stopEng();setSt('stopped');$('#st').textContent='Stopped by you';$('#prog').textContent=''};
+$('#back').onclick=()=>{run++;stopEng();clearInterval(timer);timer=0;$('#an').classList.add('hide');$('#home').classList.remove('hide')};
+/* ---- diagnostics report (no PGN / names / FEN unless "Include current game" is ticked) ---- */
+let TESTS=null,flashT;
+function diagReport(){const st=ENG.getStatus(),e=(typeof ev!=='undefined'&&ev&&(ev[idx]||ev.find(x=>x)))||null,g=typeof G!=='undefined'&&G,L=[];
+L.push('ChessLens diagnostics','Generated: '+new Date().toISOString(),'','Status line: '+$('#est').textContent,'Worker URL: '+st.workerUrl,'Engine: '+(st.version||'n/a'),'Assets:');
+const A=Object.values(st.assets);L.push(...(A.length?A.map(a=>'  '+a.url+' — HTTP '+a.status+' — '+(a.ok?'OK':'MISSING')):['  (not checked yet)']));
+L.push('WASM mode: '+st.wasm,'Worker state: '+st.worker,'UCI state: '+st.uci,'Ready state: '+st.ready,'Engine state: '+st.state,'WebAssembly supported: '+(typeof WebAssembly==='object'),
+'Current engine source: '+(e?e.src:(W?'stockfish (no analysis yet)':'fallback / none')),'Last bestmove: '+(st.lastBestmove||'n/a'),'Last depth: '+(st.lastDepth??'n/a'),'Last error: '+(st.lastError||'none'),
+'Analysis status: '+$('#st').textContent+($('#prog').textContent?' ('+$('#prog').textContent+')':''),'MultiPV lines at current position: '+(e?e.lines.length:'n/a'),'',
+'Self-tests: '+(TESTS?'run '+TESTS.at+'\n'+TESTS.res.join('\n'):'not run yet'),'','Debug log:',st.log.join('\n')||'(empty)','');
+if($('#inc').checked&&g){L.push('--- Current game (included at your request) ---',g.h?(g.h.White||'?')+' vs '+(g.h.Black||'?'):'',  'FEN: '+(g.fens?g.fens[idx]:''),SRC||'')}else L.push('Game data: not included');
+return L.join('\n')}
+async function copyText(t){try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(t);return true}}catch(_){}
+const a=document.createElement('textarea');a.value=t;a.setAttribute('readonly','');a.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.appendChild(a);a.select();let ok=false;try{ok=document.execCommand('copy')}catch(_){}a.remove();return ok}
+function flash(m){const el=$('#dmsg');el.textContent=m;clearTimeout(flashT);flashT=setTimeout(()=>{el.textContent=''},2000)}
+$('#dc').onclick=async()=>flash(await copyText(diagReport())?'Diagnostics copied':'Copy failed — use Download diagnostics');
+$('#dd').onclick=()=>{dl('chesslens-diagnostics.txt',diagReport(),'text/plain');flash('Diagnostics downloaded')};
+readyP=startEngine();
+</script></body></html>
