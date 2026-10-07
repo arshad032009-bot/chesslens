@@ -1,11 +1,11 @@
 /* ChessLens same-origin Stockfish worker. No blob: URLs, no eval, no CDN.
  * Loads stockfish.wasm.js (+ stockfish.wasm) from its own directory, else falls back to stockfish.js (asm.js).
- * Protocol (objects via postMessage): in {t:'init'|'go'|'stop'}, out {t:'log'|'stage'|'assets'|'ready'|'error'|'info'|'result'}. */
+ * Protocol (objects via postMessage): in {t:'init'|'go'|'stop'}, emit {t:'log'|'stage'|'assets'|'ready'|'error'|'info'|'result'}. */
 'use strict';
 const HERE = self.location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
-const REAL = self.postMessage.bind(self), out = m => REAL(m), log = m => out({ t: 'log', m });
+const REAL = self.postMessage.bind(self), emit = m => REAL(m), log = m => emit({ t: 'log', m });
 let send = null, ready = false, busy = false, cur = null, pending = null, version = null, waiter = null;
-const ERR = (kind, msg) => { out({ t: 'error', kind, msg }); log('ERROR ' + kind + ': ' + msg); };
+const ERR = (kind, msg) => { emit({ t: 'error', kind, msg }); log('ERROR ' + kind + ': ' + msg); };
 self.postMessage = d => { if (typeof d === 'string') onLine(d); else REAL(d); }; // engine output arrives as strings
 self.addEventListener('error', e => ERR('wasm-init', 'Uncaught worker error: ' + (e.message || 'unknown')));
 self.addEventListener('unhandledrejection', e => ERR('wasm-init', 'Unhandled rejection: ' + (e.reason && e.reason.message || e.reason)));
@@ -22,9 +22,9 @@ async function head(name) {
   catch (e) { return { url: HERE + name, ok: false, status: 'network/CORS error' }; }
 }
 async function init() {
-  out({ t: 'stage', stage: 'worker', state: 'ok' });
+  emit({ t: 'stage', stage: 'worker', state: 'ok' });
   const a = { 'stockfish.js': await head('stockfish.js'), 'stockfish.wasm.js': await head('stockfish.wasm.js'), 'stockfish.wasm': await head('stockfish.wasm') };
-  out({ t: 'assets', assets: a });
+  emit({ t: 'assets', assets: a });
   const hasWasm = typeof WebAssembly === 'object', useWasm = hasWasm && a['stockfish.wasm.js'].ok && a['stockfish.wasm'].ok;
   let file;
   if (useWasm) file = 'stockfish.wasm.js';
@@ -32,7 +32,7 @@ async function init() {
   else if (hasWasm && a['stockfish.wasm.js'].ok) return ERR('missing-wasm', 'Missing WASM file ' + a['stockfish.wasm'].url + ' (HTTP ' + a['stockfish.wasm'].status + ') and no stockfish.js fallback.');
   else return ERR('missing-file', 'Missing Stockfish file(s): ' + Object.values(a).filter(x => !x.ok).map(x => x.url + ' (HTTP ' + x.status + ')').join(', '));
   if (!useWasm) log(hasWasm ? 'WASM files missing — using asm.js build (slow)' : 'WebAssembly unsupported — using asm.js build (slow)');
-  out({ t: 'stage', stage: 'wasm', state: useWasm ? 'loading ' + file : 'skipped (asm.js: ' + file + ')' });
+  emit({ t: 'stage', stage: 'wasm', state: useWasm ? 'loading ' + file : 'skipped (asm.js: ' + file + ')' });
   self.Module = { locateFile: f => HERE + f, onAbort: w => ERR('wasm-init', 'Engine aborted: ' + w) }; // WASM resolved same-origin
   try { importScripts(HERE + file); } catch (e) { return ERR(useWasm ? 'wasm-init' : 'script-load', 'Could not run ' + HERE + file + ': ' + e.message); }
   if (self.onmessage !== mine && typeof self.onmessage === 'function') { const f = self.onmessage; self.onmessage = mine; send = c => f({ data: c }); }
@@ -42,11 +42,11 @@ async function init() {
     const pu = expect('uciok', 20000, 'uciok-timeout'); // arm the waiter BEFORE sending: a synchronous engine can answer immediately
     const iv = setInterval(() => send('uci'), 1000); send('uci'); // re-send: early commands may be dropped while WASM compiles
     try { await pu; } finally { clearInterval(iv); }
-    out({ t: 'stage', stage: 'uci', state: 'ok' });
+    emit({ t: 'stage', stage: 'uci', state: 'ok' });
     const p = expect('readyok', 10000, 'readyok-timeout'); send('isready'); await p;
-    out({ t: 'stage', stage: 'ready', state: 'ok' });
+    emit({ t: 'stage', stage: 'ready', state: 'ok' });
     send('ucinewgame'); const p2 = expect('readyok', 10000, 'readyok-timeout'); send('isready'); await p2; // UCI: sync again after ucinewgame
-    ready = true; out({ t: 'ready', version, file });
+    ready = true; emit({ t: 'ready', version, file });
   } catch (e) { ERR(e.kind || 'init', e.msg || String(e)); }
 }
 function onLine(s) {
@@ -57,18 +57,18 @@ function onLine(s) {
     const mp = /multipv (\d+)/.exec(s), m = /depth (\d+).* score (cp|mate) (-?\d+).* pv (.+)/.exec(s);
     if (m) { const n = +(mp ? mp[1] : 1), v = +m[3], sd = cur.side; // normalise to WHITE's perspective
       cur.lines[n] = { rank: n, depth: +m[1], cp: m[2] === 'cp' ? sd * v : null, mate: m[2] === 'mate' ? sd * v : null, pv: m[4].trim().split(' ') };
-      cur.depth = Math.max(cur.depth, +m[1]); out({ t: 'info', id: cur.id, depth: cur.depth }); }
+      cur.depth = Math.max(cur.depth, +m[1]); emit({ t: 'info', id: cur.id, depth: cur.depth }); }
   } else if (s.startsWith('bestmove')) {
     clearTimeout(cur.to); const c = cur; cur = null; busy = false;
     const ls = Object.values(c.lines).sort((x, y) => x.rank - y.rank), best = s.split(' ')[1];
-    out({ t: 'result', id: c.id, cancelled: c.cancelled, best: best === '(none)' ? null : best, lines: ls, depth: c.depth, ms: Math.round(performance.now() - c.t0), side: c.side });
+    emit({ t: 'result', id: c.id, cancelled: c.cancelled, best: best === '(none)' ? null : best, lines: ls, depth: c.depth, ms: Math.round(performance.now() - c.t0), side: c.side });
     if (pending) { const p = pending; pending = null; run(p); }
   }
 }
-function go(d) { if (!ready) return out({ t: 'result', id: d.id, error: 'Engine not ready' }); if (busy) { pending = d; stop(); } else run(d); }
+function go(d) { if (!ready) return emit({ t: 'result', id: d.id, error: 'Engine not ready' }); if (busy) { pending = d; stop(); } else run(d); }
 function run(d) {
   busy = true; const lim = d.timeout || (d.movetime ? d.movetime + 10000 : 60000);
-  const to = setTimeout(() => { ERR('bestmove-timeout', 'Timeout waiting for bestmove (' + lim + 'ms)'); send('stop'); out({ t: 'result', id: d.id, error: 'bestmove-timeout' }); cur = null; busy = false; ready = false; }, lim);
+  const to = setTimeout(() => { ERR('bestmove-timeout', 'Timeout waiting for bestmove (' + lim + 'ms)'); send('stop'); emit({ t: 'result', id: d.id, error: 'bestmove-timeout' }); cur = null; busy = false; ready = false; }, lim);
   cur = { id: d.id, side: d.fen.split(' ')[1] === 'w' ? 1 : -1, lines: {}, depth: 0, t0: performance.now(), to };
   send('setoption name MultiPV value ' + (d.multipv || 1)); send('position fen ' + d.fen);
   send(d.movetime ? 'go movetime ' + d.movetime : 'go depth ' + (d.depth || 12));
