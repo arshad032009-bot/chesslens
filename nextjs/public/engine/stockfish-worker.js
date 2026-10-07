@@ -45,7 +45,7 @@ async function init() {
     emit({ t: 'stage', stage: 'uci', state: 'ok' });
     const p = expect('readyok', 10000, 'readyok-timeout'); send('isready'); await p;
     emit({ t: 'stage', stage: 'ready', state: 'ok' });
-    send('ucinewgame'); const p2 = expect('readyok', 10000, 'readyok-timeout'); send('isready'); await p2; // UCI: sync again after ucinewgame
+    send('ucinewgame');
     ready = true; emit({ t: 'ready', version, file });
   } catch (e) { ERR(e.kind || 'init', e.msg || String(e)); }
 }
