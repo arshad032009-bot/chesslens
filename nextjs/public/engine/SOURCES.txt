@@ -1,0 +1,20 @@
+file: stockfish.js
+package: stockfish.js
+version: 10.0.2
+downloaded: 2026-10-07T01:37:03.089Z
+url: https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js
+pinned: yes
+
+file: stockfish.wasm
+package: stockfish.js
+version: 10.0.2
+downloaded: 2026-10-07T01:37:03.089Z
+url: https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.wasm
+pinned: yes
+
+file: stockfish.wasm.js
+package: stockfish.js
+version: 10.0.2
+downloaded: 2026-10-07T01:37:03.089Z
+url: https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.wasm.js
+pinned: yes

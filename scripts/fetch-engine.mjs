@@ -47,9 +47,9 @@ try {
     if (flag('--cross-check')) { // independent source: cdnjs API SRI (sha512) must match the downloaded bytes
       let j; try { const r = await fetch(`${API_BASE}${m.pkg}/${m.version}?fields=sri`); if (!r.ok) throw new Error('HTTP ' + r.status); j = await r.json(); } catch (e) { die(`cross-check metadata fetch failed for ${m.pkg}@${m.version}: ${e.message}`); }
       const want = j && j.sri && j.sri[m.file], have = 'sha512-' + createHash('sha512').update(buf).digest('base64');
-      if (!want) die(`cdnjs API has no SRI for ${m.file} (unexpected response shape)`);
-      if (want !== have) die(`SRI mismatch for ${key}\n  cdnjs API ${want}\n  download  ${have}`);
-      console.log('cross-checked', key, 'against cdnjs API SRI');
+      if (!want) { if (m.kind !== 'wasm') die(`cdnjs API has no SRI for ${m.file} (unexpected response shape)`); console.warn(`cdnjs API has no SRI for ${m.file}; relying on the committed SHA-256 pin and WASM magic-byte validation`); }
+      if (want && want !== have) die(`SRI mismatch for ${key}\n  cdnjs API ${want}\n  download  ${have}`);
+      if (want) console.log('cross-checked', key, 'against cdnjs API SRI'); else console.log('validated', key, 'with SHA-256 pin and WASM magic-byte check');
     }
     writeFileSync(join(tmp, hash), buf); got.set(m.url, { hash });
     console.log('verified', key, buf.length, 'bytes', hash.slice(0, 12) + '…');

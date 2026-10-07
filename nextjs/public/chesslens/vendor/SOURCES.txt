@@ -1,0 +1,6 @@
+file: chess.min.js
+package: chess.js
+version: 0.10.3
+downloaded: 2026-10-07T01:37:03.089Z
+url: https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
+pinned: yes

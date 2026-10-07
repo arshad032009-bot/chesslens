@@ -1,0 +1,6 @@
+{
+  "chess.js@0.10.3/chess.min.js": "7aa430df2b9311849040851adef30c4de49f6c8cefdb80645a4262f1f95c445f",
+  "stockfish.js@10.0.2/stockfish.js": "723fda70117bfa8d5053a7bc4ae50cdc96dc9e3fd41b57627e4dfa0a0025957a",
+  "stockfish.js@10.0.2/stockfish.wasm": "45816b436eb8c180acb2c5b9fda0148101f411edbfa6bf919918e0a362eafca8",
+  "stockfish.js@10.0.2/stockfish.wasm.js": "064175042d8b72eb9fba8311b730f6f5cebcfec736494698d675dc433f3bd275"
+}

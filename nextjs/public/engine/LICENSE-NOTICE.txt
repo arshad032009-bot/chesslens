@@ -1,0 +1,1 @@
+Stockfish and Stockfish.js are licensed under GPLv3. Source: https://github.com/official-stockfish/Stockfish and the Stockfish.js project (https://github.com/nmrugg/stockfish.js). If you distribute these files you must provide the GPLv3 text and corresponding source. chess.js is BSD-2-Clause.
