@@ -46,6 +46,8 @@ async function init() {
     const p = expect('readyok', 10000, 'readyok-timeout'); send('isready'); await p;
     emit({ t: 'stage', stage: 'ready', state: 'ok' });
     send('ucinewgame');
+    const p2 = expect('readyok', 10000, 'readyok-timeout');
+    send('isready'); await p2;
     ready = true; emit({ t: 'ready', version, file });
   } catch (e) { ERR(e.kind || 'init', e.msg || String(e)); }
 }
