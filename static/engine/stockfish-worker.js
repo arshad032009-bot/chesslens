@@ -35,8 +35,8 @@ async function init() {
   emit({ t: 'stage', stage: 'wasm', state: useWasm ? 'loading ' + file : 'skipped (asm.js: ' + file + ')' });
   self.Module = { locateFile: f => HERE + f, onAbort: w => ERR('wasm-init', 'Engine aborted: ' + w) }; // WASM resolved same-origin
   try { importScripts(HERE + file); } catch (e) { return ERR(useWasm ? 'wasm-init' : 'script-load', 'Could not run ' + HERE + file + ': ' + e.message); }
-  if (self.onmessage !== mine && typeof self.onmessage === 'function') { const f = self.onmessage; self.onmessage = mine; send = c => f({ data: c }); }
-  else if (typeof self.Stockfish === 'function') { try { const e = await self.Stockfish(); (e.addMessageListener || (l => (e.listener = l)))(onLine); send = c => e.postMessage(c); } catch (x) { return ERR('wasm-init', 'Stockfish() factory failed: ' + x.message); } }
+  if (self.onmessage !== mine && typeof self.onmessage === 'function') { const f = self.onmessage; self.onmessage = mine; send = c => { log('UCI IN: ' + c); return f({ data: c }); }; }
+  else if (typeof self.Stockfish === 'function') { try { const e = await self.Stockfish(); (e.addMessageListener || (l => (e.listener = l)))(onLine); send = c => { log('UCI IN: ' + c); return e.postMessage(c); }; } catch (x) { return ERR('wasm-init', 'Stockfish() factory failed: ' + x.message); } }
   else return ERR('engine-api', file + ' loaded but exposes no UCI interface (no onmessage / Stockfish()).');
   try {
     const pu = expect('uciok', 20000, 'uciok-timeout'); // arm the waiter BEFORE sending: a synchronous engine can answer immediately
@@ -52,6 +52,7 @@ async function init() {
   } catch (e) { ERR(e.kind || 'init', e.msg || String(e)); }
 }
 function onLine(s) {
+  if (/^(uciok|readyok|bestmove|info depth)/.test(s)) log('UCI OUT: ' + s.slice(0, 180));
   if (s.startsWith('id name')) version = s.slice(8).trim();
   if (waiter && s.includes(waiter.tok)) waiter.done(s);
   if (!cur) return;
